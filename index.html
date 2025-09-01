@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Классическое Домино — JS (Double‑Six)</title>
+  <style>
+    :root{
+      --bg:#0f172a; /* slate-900 */
+      --panel:#111827ee; /* gray-900 */
+      --panel-2:#1f2937; /* gray-800 */
+      --accent:#22d3ee; /* cyan-400 */
+      --accent-2:#06b6d4; /* cyan-500 */
+      --text:#e5e7eb; /* gray-200 */
+      --muted:#94a3b8; /* slate-400 */
+      --good:#34d399; /* green-400 */
+      --bad:#f87171; /* red-400 */
+      --warn:#fbbf24; /* amber-400 */
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0; font-family:system-ui,-apple-system,Segoe UI,Roboto,Ubuntu,"Fira Sans",sans-serif;
+      color:var(--text); background:radial-gradient(80vw 80vh at 70% 10%,#0b1228, var(--bg));
+      display:flex; flex-direction:column; gap:12px;
+    }
+    header{
+      padding:14px 16px; display:flex; align-items:center; justify-content:space-between;
+    }
+    h1{font-size:clamp(18px,3vw,24px); margin:0; font-weight:700; letter-spacing:.3px}
+    .sub{color:var(--muted); font-size:12px}
+
+    .wrap{display:grid; grid-template-rows:auto 1fr auto; gap:12px; height:calc(100vh - 64px)}
+
+    .table{
+      margin:0 12px; border-radius:18px; padding:12px; overflow:auto; backdrop-filter: blur(6px);
+      background:linear-gradient(180deg, #0b152cbb, #0a1329cc 40%, #0a1329cc 60%, #0b152cbb);
+      border:1px solid #1e293b;
+      box-shadow:0 10px 30px rgba(0,0,0,.35) inset, 0 10px 25px rgba(0,0,0,.35);
+    }
+    .chain{display:flex; align-items:center; gap:8px; padding:8px; min-height:110px; flex-wrap:wrap}
+
+    .boneyard, .hand{
+      display:flex; align-items:center; gap:8px; padding:10px 14px; overflow:auto;
+      background:linear-gradient(180deg, #0b1326, #0a1122); border-top:1px solid #1e293b; border-bottom:1px solid #1e293b;
+    }
+
+    .panel{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:8px 12px; margin:0 12px}
+    .panel .group{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+
+    .btn{
+      border:none; padding:10px 14px; border-radius:12px; cursor:pointer; font-weight:700; letter-spacing:.3px;
+      background:linear-gradient(180deg, var(--accent), var(--accent-2)); color:#00121a; box-shadow:0 4px 0 #0e7490;
+      transition:transform .08s ease-out, filter .18s;
+    }
+    .btn:disabled{filter:grayscale(.9) brightness(.7); cursor:not-allowed; box-shadow:none}
+    .btn:active{transform:translateY(1px)}
+
+    .pill{padding:6px 10px; border-radius:999px; background:#0b1222; border:1px solid #1e293b; color:var(--muted); font-size:12px}
+
+    .tile{
+      position:relative; width:56px; height:28px; border-radius:6px; background:linear-gradient(180deg,#f9fafb,#e5e7eb);
+      color:#111; border:2px solid #d1d5db; box-shadow:0 3px 0 #9ca3af; display:flex; align-items:center; justify-content:center;
+      user-select:none;
+    }
+    .tile.double{height:56px; width:28px}
+    .tile .split{position:absolute; width:2px; height:100%; background:#374151}
+    .tile.double .split{width:100%; height:2px}
+    .pips{display:grid; grid-template-columns:repeat(3, 1fr); grid-template-rows:repeat(2, 1fr); gap:1px; width:50%; height:70%}
+    .pip{width:6px; height:6px; border-radius:50%; background:#111; justify-self:center; align-self:center}
+    .tile.double .pips{grid-template-rows:repeat(3, 1fr); grid-template-columns:repeat(2, 1fr); width:70%; height:50%}
+
+    .tile.playable{outline:3px solid #22d3ee; box-shadow:0 0 0 4px rgba(34,211,238,.25)}
+    .tile.ai{filter:saturate(.5)}
+
+    .slot{width:80px; height:40px; border:2px dashed #334155; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#64748b; font-size:12px}
+
+    .status{margin-left:8px; font-size:14px; color:var(--muted)}
+
+    .snackbar{
+      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
+      background:#0b1222; border:1px solid #1e293b; padding:10px 14px; border-radius:12px; box-shadow:0 12px 30px rgba(0,0,0,.4);
+      display:none; gap:10px; align-items:center; font-size:14px
+    }
+    .snackbar.show{display:flex}
+
+    .winner{font-weight:800; color:#fff}
+
+    /* Responsive tweaks */
+    @media (max-width:700px){
+      .tile{transform:scale(.9)}
+      .tile.double{transform:scale(.9)}
+      .slot{transform:scale(.9)}
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Классическое Домино — Double‑Six</h1>
+      <div class="sub">2 игрока: Вы против простого бота. Базар, добор, старт с наибольшего дубля.</div>
+    </div>
+    <div class="group panel">
+      <button id="newGame" class="btn">Новая партия</button>
+      <span class="pill" id="score">Счёт раунда: —</span>
+    </div>
+  </header>
+
+  <div class="wrap">
+    <div class="boneyard" id="boneyard"></div>
+
+    <div class="table">
+      <div class="chain" id="chain">
+        <div class="slot">Лево</div>
+        <div class="slot">Право</div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="group">
+        <button id="drawBtn" class="btn">Взять из базара</button>
+        <button id="passBtn" class="btn">Пас</button>
+        <span class="status" id="status">Ваш ход…</span>
+      </div>
+      <div class="pill" id="counts">У вас: 0 • Бот: 0 • Базар: 0</div>
+    </div>
+
+    <div class="hand" id="playerHand"></div>
+  </div>
+
+  <div class="snackbar" id="snackbar"></div>
+
+  <script>
+  // --- Game State ---
+  const STATE = {
+    set: [], // all tiles remaining in boneyard
+    chain: [], // tiles played: {a,b, flip}
+    hands: { player: [], ai: [] },
+    turn: 'player', // 'player' or 'ai'
+    left: null, // current left number
+    right: null, // current right number
+    over: false,
+  };
+
+  // --- Helpers ---
+  function makeSet(max=6){
+    const set=[]; for(let a=0;a<=max;a++){ for(let b=a;b<=max;b++){ set.push({a,b,id:`${a}-${b}-${Math.random().toString(36).slice(2,8)}`}); } }
+    return set;
+  }
+  function shuffle(arr){ for(let i=arr.length-1;i>0;i--){ const j=Math.floor(Math.random()* (i+1)); [arr[i],arr[j]] = [arr[j],arr[i]] } return arr }
+  function draw(hand){ if(STATE.set.length){ hand.push(STATE.set.pop()); updateUI(); return true } return false }
+  function sumTile(t){ return t.a + t.b }
+  function hasMove(hand){ return hand.some(t => canPlay(t).length > 0) }
+  function canPlay(tile){
+    const opts=[];
+    if(STATE.chain.length===0){ return ['start'] }
+    const L=STATE.left, R=STATE.right;
+    if(tile.a===L || tile.b===L) opts.push('left');
+    if(tile.a===R || tile.b===R) opts.push('right');
+    return opts;
+  }
+  function place(tile, side){
+    // Determine orientation (flip) so matching number attaches to side
+    if(STATE.chain.length===0){
+      STATE.chain.push({ ...tile, flip:false });
+      STATE.left = tile.a; STATE.right = tile.b;
+    } else if(side==='left'){
+      if(tile.b===STATE.left){ STATE.chain.unshift({ ...tile, flip:false }); STATE.left = tile.a; }
+      else if(tile.a===STATE.left){ STATE.chain.unshift({ ...tile, flip:true }); STATE.left = tile.b; }
+      else return false;
+    } else if(side==='right'){
+      if(tile.a===STATE.right){ STATE.chain.push({ ...tile, flip:false }); STATE.right = tile.b; }
+      else if(tile.b===STATE.right){ STATE.chain.push({ ...tile, flip:true }); STATE.right = tile.a; }
+      else return false;
+    }
+    return true;
+  }
+  function removeFromHand(hand, id){ const i=hand.findIndex(t=>t.id===id); if(i>=0) hand.splice(i,1) }
+
+  function highestDouble(hand){
+    const doubles = hand.filter(t=>t.a===t.b).sort((x,y)=>y.a-x.a);
+    return doubles[0] || null;
+  }
+  function highestTile(hand){ return [...hand].sort((x,y)=>sumTile(y)-sumTile(x))[0] }
+
+  // --- Rendering ---
+  const elBoneyard = document.getElementById('boneyard');
+  const elChain = document.getElementById('chain');
+  const elPlayer = document.getElementById('playerHand');
+  const elDraw = document.getElementById('drawBtn');
+  const elPass = document.getElementById('passBtn');
+  const elStatus = document.getElementById('status');
+  const elCounts = document.getElementById('counts');
+  const elScore = document.getElementById('score');
+  const elSnack = document.getElementById('snackbar');
+
+  function pipGrid(n, vertical=false){
+    // simple pip layout for 0..6
+    const spots = {
+      0: [],
+      1: [[2,2]],
+      2: [[1,1],[3,3]],
+      3: [[1,1],[2,2],[3,3]],
+      4: [[1,1],[1,3],[3,1],[3,3]],
+      5: [[1,1],[1,3],[2,2],[3,1],[3,3]],
+      6: [[1,1],[2,1],[3,1],[1,3],[2,3],[3,3]],
+    };
+    // Build 3x2 or 2x3 grid (handled via CSS switching on .double)
+    const div = document.createElement('div');
+    div.className='pips';
+    spots[n].forEach(([r,c])=>{
+      const dot = document.createElement('div'); dot.className='pip';
+      dot.style.gridRow=r; dot.style.gridColumn=c; div.appendChild(dot)
+    });
+    return div;
+  }
+
+  function renderTile(tile, {interactive=false, playable=false, ai=false}={}){
+    const isDouble = tile.a===tile.b;
+    const div = document.createElement('div');
+    div.className = 'tile' + (isDouble? ' double':'') + (playable? ' playable':'') + (ai? ' ai':'');
+    const split = document.createElement('div'); split.className='split'; div.appendChild(split);
+    const a = pipGrid(tile.a, isDouble), b = pipGrid(tile.b, isDouble);
+    if(isDouble){ div.appendChild(a); div.appendChild(b); }
+    else { div.appendChild(a); div.appendChild(b); }
+
+    if(interactive){
+      div.style.cursor='pointer';
+      div.title = playable? 'Можно ходить этой костью' : 'Нельзя положить сейчас';
+    }
+    div.dataset.id = tile.id;
+    return div;
+  }
+
+  function render(){
+    // Boneyard (back of tiles as count)
+    elBoneyard.innerHTML='';
+    const backCount = STATE.set.length;
+    const back = document.createElement('div');
+    back.className='pill';
+    back.textContent = `Базар: ${backCount}`;
+    elBoneyard.appendChild(back);
+
+    // Chain
+    elChain.innerHTML='';
+    if(STATE.chain.length===0){
+      const l=document.createElement('div'); l.className='slot'; l.textContent='Лево';
+      const r=document.createElement('div'); r.className='slot'; r.textContent='Право';
+      elChain.appendChild(l); elChain.appendChild(r);
+    } else {
+      STATE.chain.forEach((t,i)=>{
+        const dom = renderTile(t, {ai:false});
+        if(t.flip){ dom.style.transform = 'scaleX(-1)'; }
+        dom.style.opacity = '1';
+        elChain.appendChild(dom);
+      })
+    }
+
+    // Player hand
+    elPlayer.innerHTML='';
+    const playableSet = new Set();
+    STATE.hands.player.forEach(t=>{
+      const opts = canPlay(t);
+      if(opts.length) playableSet.add(t.id);
+    })
+    STATE.hands.player
+      .sort((x,y)=> (x.a===x.b?10:0) + sumTile(y) - ((y.a===y.b?10:0) + sumTile(x))) // simple sorting
+      .forEach(t=>{
+        const dom = renderTile(t, {interactive:true, playable:playableSet.has(t.id)});
+        dom.addEventListener('click', ()=> onPlayerTileClick(t));
+        elPlayer.appendChild(dom);
+      })
+
+    // Buttons & status
+    elDraw.disabled = STATE.over || STATE.turn!=='player' || hasMove(STATE.hands.player) || STATE.set.length===0;
+    elPass.disabled = STATE.over || STATE.turn!=='player' || hasMove(STATE.hands.player) || STATE.set.length>0;
+
+    elCounts.textContent = `У вас: ${STATE.hands.player.length} • Бот: ${STATE.hands.ai.length} • Базар: ${STATE.set.length}`;
+
+    if(STATE.over){
+      elStatus.innerHTML = `<span class="winner">Партия окончена.</span>`;
+    } else {
+      elStatus.textContent = (STATE.turn==='player')? 'Ваш ход…' : 'Ход бота…';
+    }
+  }
+
+  function updateUI(){ render(); }
+
+  function toast(msg){
+    elSnack.textContent = msg; elSnack.classList.add('show');
+    setTimeout(()=> elSnack.classList.remove('show'), 1600);
+  }
+
+  // --- Game Flow ---
+  function startGame(){
+    Object.assign(STATE, { set: shuffle(makeSet()), chain: [], hands:{player:[], ai:[]}, turn:'player', left:null, right:null, over:false });
+
+    // Deal 7 to each, last drawn from set's end (already shuffled)
+    for(let i=0;i<7;i++){ draw(STATE.hands.player); draw(STATE.hands.ai); }
+
+    // Determine starter: highest double among both, else highest tile
+    const pd = highestDouble(STATE.hands.player);
+    const ad = highestDouble(STATE.hands.ai);
+    let starter=null, who='player';
+    if(pd && ad){ starter = (pd.a>ad.a? pd: ad); who = (pd.a>ad.a? 'player':'ai'); }
+    else if(pd || ad){ starter = pd || ad; who = pd? 'player':'ai'; }
+    else {
+      const pt = highestTile(STATE.hands.player), at = highestTile(STATE.hands.ai);
+      if(sumTile(pt) >= sumTile(at)){ starter = pt; who='player'; } else { starter=at; who='ai'; }
+    }
+    // Play starter to center
+    place(starter, 'start');
+    removeFromHand(STATE.hands[who], starter.id);
+    STATE.turn = (who==='player'? 'ai':'player');
+
+    elScore.textContent = 'Счёт раунда: —';
+    updateUI();
+
+    if(STATE.turn==='ai') setTimeout(aiTurn, 600);
+  }
+
+  function onPlayerTileClick(tile){
+    if(STATE.over || STATE.turn!=='player') return;
+    const opts = canPlay(tile);
+    if(opts.length===0){ toast('Этой костью ход невозможен.'); return; }
+
+    if(opts.includes('start')){
+      place(tile,'start'); removeFromHand(STATE.hands.player, tile.id); endTurn(); return;
+    }
+
+    if(opts.length===1){
+      place(tile, opts[0]); removeFromHand(STATE.hands.player, tile.id); endTurn(); return;
+    }
+
+    // Ask Left / Right
+    chooseSide(opts).then(side=>{
+      if(!side) return; // cancelled
+      const ok = place(tile, side);
+      if(ok){ removeFromHand(STATE.hands.player, tile.id); endTurn(); }
+      else toast('Неверная сторона.');
+    });
+  }
+
+  function chooseSide(options){
+    return new Promise(resolve=>{
+      const box = document.createElement('div');
+      box.className='snackbar show';
+      box.innerHTML = `<span style="color:var(--muted)">Куда положить?</span>`;
+      const mk=(lab)=>{ const b=document.createElement('button'); b.className='btn'; b.textContent=lab; b.addEventListener('click',()=>{ box.remove(); resolve(lab.toLowerCase()); }); return b };
+      if(options.includes('left')) box.appendChild(mk('Left'));
+      if(options.includes('right')) box.appendChild(mk('Right'));
+      const cancel = document.createElement('button'); cancel.className='btn'; cancel.style.background='linear-gradient(180deg,#e5e7eb,#d1d5db)'; cancel.style.boxShadow='0 4px 0 #9ca3af'; cancel.textContent='Отмена'; cancel.addEventListener('click',()=>{ box.remove(); resolve(null); });
+      box.appendChild(cancel);
+      document.body.appendChild(box);
+    });
+  }
+
+  function endTurn(){
+    if(checkWin()) return;
+    STATE.turn = (STATE.turn==='player')? 'ai':'player';
+    updateUI();
+    if(STATE.turn==='ai') setTimeout(aiTurn, 600);
+  }
+
+  function checkWin(){
+    // Someone emptied hand
+    if(STATE.hands.player.length===0 || STATE.hands.ai.length===0){
+      const playerEmpty = STATE.hands.player.length===0;
+      const winner = playerEmpty? 'Вы' : 'Бот';
+      const loserSum = playerEmpty? sumHand(STATE.hands.ai) : sumHand(STATE.hands.player);
+      finish(`${winner} победили! Очки победителя: ${loserSum}`);
+      elScore.textContent = `Счёт раунда: ${loserSum} в пользу ${winner}`;
+      return true;
+    }
+
+    // Blocked game: no moves and no boneyard for both on their turns
+    const noMovesPlayer = !hasMove(STATE.hands.player);
+    const noMovesAI = !hasMove(STATE.hands.ai);
+    if(STATE.set.length===0 && noMovesPlayer && noMovesAI){
+      const ps = sumHand(STATE.hands.player), as = sumHand(STATE.hands.ai);
+      if(ps===as){ finish('Ничья: игра закрыта.'); elScore.textContent = 'Счёт раунда: ничья'; }
+      else if(ps<as){ finish(`Игра закрыта. Победа игрока (${as} очков противника).`); elScore.textContent = `Счёт раунда: ${as} в пользу Вас`; }
+      else { finish(`Игра закрыта. Победа бота (${ps} очков противника).`); elScore.textContent = `Счёт раунда: ${ps} в пользу Бота`; }
+      return true;
+    }
+    return false;
+  }
+  function finish(msg){ STATE.over=true; updateUI(); toast(msg); }
+  function sumHand(hand){ return hand.reduce((s,t)=>s+sumTile(t),0) }
+
+  // --- Player Controls ---
+  elDraw.addEventListener('click', ()=>{
+    if(STATE.turn!=='player' || STATE.over) return;
+    const ok = draw(STATE.hands.player);
+    if(!ok){ toast('Базар пуст.'); return; }
+    // If new tile is playable, player may play; else switch if still no moves
+    updateUI();
+    if(!hasMove(STATE.hands.player)){
+      toast('Ходить нечем. Ход переходит боту.');
+      STATE.turn='ai'; updateUI(); setTimeout(aiTurn, 600);
+    }
+  });
+  elPass.addEventListener('click', ()=>{
+    if(STATE.turn!=='player' || STATE.over) return;
+    if(STATE.set.length>0){ toast('Нельзя пасовать, пока есть базар.'); return; }
+    if(hasMove(STATE.hands.player)){ toast('У вас есть ход!'); return; }
+    STATE.turn='ai'; updateUI(); setTimeout(aiTurn, 600);
+  })
+
+  // --- Simple AI ---
+  function aiTurn(){
+    if(STATE.over) return;
+    // Try to play a tile. Strategy: prefer playable; among options, play tile that maximizes pip sum placed, prefer non-doubles early
+    const hand = STATE.hands.ai;
+    const candidates = [];
+    for(const t of hand){
+      const opts = canPlay(t);
+      for(const side of opts.filter(o=>o!=='start')){
+        candidates.push({ tile:t, side, score: sumTile(t) + (t.a===t.b? -1: 1) + (side==='left'?0:0) });
+      }
+      if(opts.includes('start')){ candidates.push({ tile:t, side:'left', score: sumTile(t) }); }
+    }
+
+    if(candidates.length){
+      candidates.sort((x,y)=> y.score - x.score);
+      const choice = candidates[0];
+      place(choice.tile, choice.side==='left'?'left':'right');
+      removeFromHand(hand, choice.tile.id);
+      updateUI();
+      if(!checkWin()){
+        STATE.turn='player'; updateUI();
+      }
+      return;
+    }
+
+    // No move -> draw if possible
+    if(STATE.set.length){
+      draw(hand); updateUI();
+      // Try again immediately once after draw if possible
+      const playableNow = hand.some(t=>canPlay(t).length>0);
+      if(playableNow){ setTimeout(aiTurn, 500); return; }
+      // else pass to player
+      STATE.turn='player'; updateUI();
+      return;
+    }
+
+    // No move and no boneyard -> pass
+    STATE.turn='player'; updateUI();
+    // Also check for blocked game on each pass
+    checkWin();
+  }
+
+  // --- New Game ---
+  document.getElementById('newGame').addEventListener('click', startGame);
+
+  // Boot
+  startGame();
+  </script>
+</body>
+</html>
